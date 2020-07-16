@@ -40,7 +40,7 @@ endif (POLICY CMP0042)
 #######################
 # VERSION
 #######################
-SET(PROJECT_VERSION "0.6.2")
+SET(PROJECT_VERSION "0.6.3")
 SET(PROJECT_PREFIX find_object)
 
 STRING(REGEX MATCHALL "[0-9]" PROJECT_VERSION_PARTS "${PROJECT_VERSION}")
@@ -54,6 +54,24 @@ ADD_DEFINITIONS(-DPROJECT_NAME="${PROJECT_NAME}")
 
 ####### DEPENDENCIES #######
 FIND_PACKAGE(OpenCV REQUIRED) # tested on 2.3.1
+
+# check if version status is "-dev" (SIFT compatibility issue between 4.3.0 vs 4.3.0-dev)
+FIND_FILE(OpenCV_VERSION_HPP opencv2/core/version.hpp
+  PATHS ${OpenCV_INCLUDE_DIRS}
+  NO_DEFAULT_PATH)
+FILE(READ ${OpenCV_VERSION_HPP} TMPTXT)
+STRING(FIND "${TMPTXT}" "-dev" matchres)
+IF(NOT ${matchres} EQUAL -1)
+  add_definitions(-DOPENCV_DEV)
+ENDIF(NOT ${matchres} EQUAL -1)
+
+# For SuperPoint
+SET(TORCH 0)
+FIND_PACKAGE(Torch QUIET)
+IF(TORCH_FOUND)
+    MESSAGE(STATUS "Found Torch: ${TORCH_INCLUDE_DIRS}")
+    SET(TORCH 1)
+ENDIF(TORCH_FOUND)
 
 IF(OpenCV_VERSION_MAJOR EQUAL 4)
   IF(NOT MSVC)
@@ -158,9 +176,9 @@ IF(NOT CATKIN_BUILD)
    ADD_SUBDIRECTORY( src )
    ADD_SUBDIRECTORY( app )
    ADD_SUBDIRECTORY( tools )
-   IF(NONFREE)
+   IF(NONFREE OR OpenCV_VERSION VERSION_GREATER "4.2.0") # SIFT is free from 4.3.0
    ADD_SUBDIRECTORY( example )
-   ENDIF(NONFREE)
+   ENDIF(NONFREE OR OpenCV_VERSION VERSION_GREATER "4.2.0")
 
    #######################
    # Uninstall target, for "make uninstall"
@@ -281,9 +299,22 @@ IF(NOT CATKIN_BUILD)
      ENDIF()
    ELSE()
      IF(OPENCV_XFEATURES2D_FOUND)
-       MESSAGE(STATUS "  With OpenCV ${OpenCV_VERSION_MAJOR} xfeatures2d module (SIFT/SURF/BRIEF/FREAK) = YES")
+       MESSAGE(STATUS "  With OpenCV ${OpenCV_VERSION} xfeatures2d module (BRIEF/FREAK/KAZE) = YES")
      ELSE()
-       MESSAGE(STATUS "  With OpenCV ${OpenCV_VERSION_MAJOR} xfeatures2d module (SIFT/SURF/BRIEF/FREAK) = NO (not found)")
+       MESSAGE(STATUS "  With OpenCV ${OpenCV_VERSION} xfeatures2d module (BRIEF/FREAK/KAZE) = NO (not found)")
+     ENDIF()
+     IF(OpenCV_VERSION VERSION_GREATER "4.2.0")
+       IF(NONFREE)
+         MESSAGE(STATUS "  With OpenCV ${OpenCV_VERSION} nonfree module (SURF) = YES")
+       ELSE()
+         MESSAGE(STATUS "  With OpenCV ${OpenCV_VERSION} nonfree module (SURF) = NO")
+       ENDIF()
+     ELSEIF()
+       IF(NONFREE)
+         MESSAGE(STATUS "  With OpenCV ${OpenCV_VERSION} nonfree module (SIFT/SURF) = YES")
+       ELSE()
+         MESSAGE(STATUS "  With OpenCV ${OpenCV_VERSION} nonfree module (SIFT/SURF) = NO")
+       ENDIF()
      ENDIF()
    ENDIF()
 
@@ -300,6 +331,12 @@ IF(NOT CATKIN_BUILD)
    ELSE()
       MESSAGE(STATUS "  With tcmalloc = NO (tcmalloc not found)")
    ENDIF(Tcmalloc_FOUND)
+   
+   IF(TORCH_FOUND)
+      MESSAGE(STATUS "  With Torch = YES")
+   ELSE()
+      MESSAGE(STATUS "  With Torch = NO (libtorch not found)")
+   ENDIF(TORCH_FOUND)
 
    IF(APPLE)
       MESSAGE(STATUS "  BUILD_AS_BUNDLE = ${BUILD_AS_BUNDLE}")
@@ -353,7 +390,8 @@ ELSE()
    #############
    ## Mark other files for installation (e.g. launch and bag files, etc.)
    install(FILES
-      launch/find_object_2d_gui.launch
+      launch/find_object_3d_kinect2.launch
+      launch/find_object_3d_zed.launch
       launch/find_object_2d.launch
       launch/find_object_3d.launch
       DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch
